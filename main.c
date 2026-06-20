@@ -18,6 +18,9 @@
 #if CONFIG_GDB_STUB == 1
 #include "gdb.h"
 #endif
+#if CONFIG_SPI_LOOPBACK_TEST == 1
+#include "spi.h"
+#endif
 #if CONFIG_GPS_ROLLOVER_TEST == 1
 #include <stdio.h>
 #endif
@@ -374,6 +377,10 @@ main_sh (void)
   putstr("HS-2J0 SH2 ROM\n");
   putstr (version_string);
   led(0x50);
+
+#if CONFIG_SPI_LOOPBACK_TEST == 1
+  spi_loopback_test();
+#endif
 
 #if CONFIG_LOAD_ELF == 1
   boot_linux();

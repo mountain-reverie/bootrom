@@ -45,6 +45,30 @@ unsigned char xronebyte(unsigned char c)
 /* sdc_initialize / sdc_readp from spi_mmc.c call spi_cs/xronebyte/spi_setspeed.
    No spif_* (SPI flash) functions needed when CONFIG_SPIFLASH=0. */
 
+extern void putstr(const char *);
+
+/* spi_loopback_test: enable spi2 hardware loopback, send 0xA5, verify echo.
+   Writes directly to ctrl (bypasses spi2_ctrl shadow) so it can self-contain
+   the loopback bit without affecting CS state seen by spi_mmc.c. */
+void spi_loopback_test(void)
+{
+    unsigned char rx;
+    /* loopback=bit3=1, cs[0]=1 (desel), start=0 */
+    DEVICE_SPI2->ctrl = 0x09u;        /* bits: loop(3)=1, cs0(0)=1 */
+    DEVICE_SPI2->data = 0xA5u;
+    DEVICE_SPI2->ctrl = 0x09u | 0x02u; /* + start(1)=1 */
+    while (DEVICE_SPI2->ctrl & 0x02u)  /* poll busy */
+        ;
+    rx = (unsigned char)(DEVICE_SPI2->data & 0xffu);
+    /* restore: no loopback, cs[0]=1 (desel), speed=reset */
+    spi2_ctrl = 0x01u;
+    DEVICE_SPI2->ctrl = spi2_ctrl;
+    if (rx == 0xA5u)
+        putstr("SPI LOOPBACK OK\n");
+    else
+        putstr("SPI LOOPBACK FAIL\n");
+}
+
 #else /* original spi.vhd path — unchanged below */
 
 #define SPI_RES		0xAB

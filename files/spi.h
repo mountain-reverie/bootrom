@@ -34,6 +34,11 @@ extern void spi_cs(int chip);
 extern unsigned char xronebyte(unsigned char c);
 /* 0: 400KHz,else max: 12.5 MHz */
 extern void spi_setspeed(int );
+
+#ifdef DEVICE_SPI2_ADDR
+extern void spi_loopback_test(void);
+#endif
+
 /* The following is SPI Flash write disable them for now */
 #if 0
 extern int spi_read(int chip, unsigned addr, unsigned char *bufptr, unsigned len);
