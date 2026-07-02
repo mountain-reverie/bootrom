@@ -382,6 +382,35 @@ main_sh (void)
   spi_loopback_test();
 #endif
 
+#if CONFIG_CPU1_DIAG == 1
+  /* Phase-2 SMP bring-up diagnostic (Task 1, temporary — folded into a
+   * real smp.c in Task 2): stage cpu1's code into SDRAM, release cpu1,
+   * and poll a shared-RAM sentinel to confirm it ran. */
+  {
+    /* NB: the sh2-elf toolchain prepends a leading underscore to every C
+     * symbol name (main_sh -> _main_sh), so these C-level identifiers
+     * (without a leading underscore) resolve to the linker-script symbols
+     * _cpu1_load/_cpu1_start/_cpu1_end/_cpu1_stack_top defined in
+     * linker/sh32.x. */
+    extern unsigned int cpu1_load[], cpu1_start[], cpu1_end[], cpu1_stack_top[];
+    extern void cpu1_main(void);
+    unsigned int *dst = cpu1_start, *src = cpu1_load;
+    while ((unsigned int)dst < (unsigned int)cpu1_end) *dst++ = *src++;
+
+    *(volatile unsigned int *)0x00008000u = (unsigned int)&cpu1_main;      /* PC */
+    *(volatile unsigned int *)0x00008004u = (unsigned int)cpu1_stack_top;  /* SP */
+    *(volatile unsigned int *)0xabcd0640u = 1u;                            /* go */
+
+    {
+      volatile unsigned int *sentinel = (volatile unsigned int *)0x0000810cu;
+      unsigned int spins = 0;
+      while (*sentinel != 0xC0DE0001u && spins < 2000000u) spins++;
+      if (*sentinel == 0xC0DE0001u) putstr("DIAG CPU1 RAN\n");
+      else                          putstr("DIAG CPU1 TIMEOUT\n");
+    }
+  }
+#endif
+
 #if CONFIG_LOAD_ELF == 1
   boot_linux();
 #endif
