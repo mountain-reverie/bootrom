@@ -32,10 +32,9 @@ CONFIG_GPIO_INIT_VALUE=0
 # If CONFIG_TEST_MEM=1 then the program
 CONFIG_TEST_MEM=0
 
-# Phase-2 SMP bring-up diagnostic (Task 1, temporary — folded into a real
-# smp.c in Task 2). When 1, main_sh() stages cpu1_diag.o's cpu1_main() into
-# SDRAM, releases cpu1 via CPU1_ENABLE, and polls a shared-RAM sentinel to
-# confirm cpu1 executed.
+# Phase-2 SMP demo. When 1, main_sh() (cpu0) stages cpu1.o's cpu1_main() into
+# SDRAM, releases cpu1 via CPU1_ENABLE, and verifies cpu1's seed-derived
+# result via the shared-RAM mailbox, reporting "CPU1 OK: <hex>".
 CONFIG_CPU1_DIAG=0
 
 # Determines if the UART function will use uartlite or uart16550
@@ -269,7 +268,7 @@ OBJS := main.o
 OBJS += version.o
 OBJS += entry.o
 ifeq ($(CONFIG_CPU1_DIAG),1)
-	OBJS += cpu1_diag.o
+	OBJS += cpu1.o
 endif
 ifeq ($(CONFIG_GDB_STUB),1)
 	OBJS += $(GDB_OBJS)

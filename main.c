@@ -69,6 +69,20 @@ putuint(unsigned int x)
 }
 
 void
+put_hex(unsigned int x)
+{
+  static const char hexdigits[] = "0123456789abcdef";
+  char buf[9];
+  int i;
+  for (i = 7; i >= 0; i--) {
+    buf[i] = hexdigits[x & 0xf];
+    x >>= 4;
+  }
+  buf[8] = 0;
+  putstr(buf);
+}
+
+void
 putinterval(unsigned int sec_delta, unsigned int nsec_delta)
 {
   // nsec_delta = nsec1 - nsec0
@@ -383,9 +397,11 @@ main_sh (void)
 #endif
 
 #if CONFIG_CPU1_DIAG == 1
-  /* Phase-2 SMP bring-up diagnostic (Task 1, temporary — folded into a
-   * real smp.c in Task 2): stage cpu1's code into SDRAM, release cpu1,
-   * and poll a shared-RAM sentinel to confirm it ran. */
+  /* Phase-2 SMP demo: stage cpu1's code into SDRAM, seed a parameter,
+   * release cpu1, poll for its result, and verify it independently before
+   * reporting. Safe on single-core (j2-direct): the poll below times out
+   * and this prints nothing, leaving the banner + SPI test as the only
+   * observable output. */
   {
     /* NB: the sh2-elf toolchain prepends a leading underscore to every C
      * symbol name (main_sh -> _main_sh), so these C-level identifiers
@@ -394,27 +410,57 @@ main_sh (void)
      * linker/sh32.x. */
     extern unsigned int cpu1_load[], cpu1_start[], cpu1_end[], cpu1_stack_top[];
     extern void cpu1_main(void);
-    unsigned int *dst = cpu1_start, *src = cpu1_load;
-    while ((unsigned int)dst < (unsigned int)cpu1_end) *dst++ = *src++;
 
-    *(volatile unsigned int *)0x00008000u = (unsigned int)&cpu1_main;      /* PC */
-    *(volatile unsigned int *)0x00008004u = (unsigned int)cpu1_stack_top;  /* SP */
-    *(volatile unsigned int *)0xabcd0640u = 1u;                            /* go */
+    volatile unsigned int *cpu_id_reg = (volatile unsigned int *)0xabcd0600u;
+    volatile unsigned int *cpu1_enable = (volatile unsigned int *)0xabcd0640u;
+    volatile unsigned int *vec_pc = (volatile unsigned int *)0x00008000u;
+    volatile unsigned int *vec_sp = (volatile unsigned int *)0x00008004u;
+    volatile unsigned int *seed = (volatile unsigned int *)0x00008100u;
+    volatile unsigned int *result = (volatile unsigned int *)0x00008108u;
+    volatile unsigned int *finish = (volatile unsigned int *)0x0000810cu;
+    const unsigned int seed_val = 0x00000007u;
 
-    {
-      volatile unsigned int *sentinel = (volatile unsigned int *)0x0000810cu;
-      volatile unsigned int spins;   /* volatile: keep the counter's dt/branch
-        out of the sentinel-check branch's delay slot. A compound
-        `while(*s != X && spins < N)` let gcc -Os fold a T-setting instruction
-        into a bt.s delay slot feeding the next conditional branch; on the J2
-        that mis-executes and the loop exits after one iteration (dual-core
-        then wrongly reported TIMEOUT though cpu1 ran). Bounded so single-core
-        (no cpu1) still terminates. */
-      int ran = 0;
-      for (spins = 2000000u; spins != 0u; spins--) {
-        if (*sentinel == 0xC0DE0001u) { ran = 1; break; }
+    /* Only cpu0 drives bring-up; if this image somehow runs on cpu1, skip. */
+    if ((*cpu_id_reg & 1u) == 0u) {
+      unsigned int *dst = cpu1_start, *src = cpu1_load;
+      while ((unsigned int)dst < (unsigned int)cpu1_end) *dst++ = *src++;
+
+      *finish = 0u;
+      *seed = seed_val;
+      *vec_pc = (unsigned int)&cpu1_main;
+      *vec_sp = (unsigned int)cpu1_stack_top;
+      *cpu1_enable = 1u;                            /* release cpu1 */
+
+      {
+        /* volatile: keep the counter's dt/branch out of the finish-check
+           branch's delay slot. A compound `while(a && b)` let gcc -Os fold
+           a T-setting instruction into a bt.s delay slot feeding the next
+           conditional branch; on the J2 that mis-executes and the loop
+           exits after one iteration. Bounded so single-core (no cpu1)
+           still terminates within the sim watchdog. */
+        volatile unsigned int spins;
+        int done = 0;
+        for (spins = 2000000u; spins != 0u; spins--) {
+          if (*finish != 0u) { done = 1; break; }
+        }
+
+        if (done) {
+          unsigned int expected = (seed_val << 4) + (seed_val << 1) + 3u;
+          if (*result == expected) {
+            putstr("CPU1 OK: ");
+            put_hex(*result);
+            putstr("\n");
+          } else {
+            putstr("CPU1 ECHO: ");
+            put_hex(*(volatile unsigned int *)0x00008110u);
+            putstr("\n");
+            putstr("CPU1 FAIL: ");
+            put_hex(*result);
+            putstr("\n");
+          }
+        }
+        /* else: single-core / no answer within the bound — stay quiet. */
       }
-      putstr(ran ? "DIAG CPU1 RAN\n" : "DIAG CPU1 TIMEOUT\n");
     }
   }
 #endif
