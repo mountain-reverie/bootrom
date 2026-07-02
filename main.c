@@ -403,10 +403,18 @@ main_sh (void)
 
     {
       volatile unsigned int *sentinel = (volatile unsigned int *)0x0000810cu;
-      unsigned int spins = 0;
-      while (*sentinel != 0xC0DE0001u && spins < 2000000u) spins++;
-      if (*sentinel == 0xC0DE0001u) putstr("DIAG CPU1 RAN\n");
-      else                          putstr("DIAG CPU1 TIMEOUT\n");
+      volatile unsigned int spins;   /* volatile: keep the counter's dt/branch
+        out of the sentinel-check branch's delay slot. A compound
+        `while(*s != X && spins < N)` let gcc -Os fold a T-setting instruction
+        into a bt.s delay slot feeding the next conditional branch; on the J2
+        that mis-executes and the loop exits after one iteration (dual-core
+        then wrongly reported TIMEOUT though cpu1 ran). Bounded so single-core
+        (no cpu1) still terminates. */
+      int ran = 0;
+      for (spins = 2000000u; spins != 0u; spins--) {
+        if (*sentinel == 0xC0DE0001u) { ran = 1; break; }
+      }
+      putstr(ran ? "DIAG CPU1 RAN\n" : "DIAG CPU1 TIMEOUT\n");
     }
   }
 #endif
