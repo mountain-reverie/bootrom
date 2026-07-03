@@ -445,7 +445,10 @@ main_sh (void)
         }
 
         if (done) {
-          unsigned int expected = (seed_val << 4) + (seed_val << 1) + 3u;
+          /* cpu1 recombines the two mov.w halfword reads of 0x11112222 from
+             cacheable SDRAM; a correct dcache 16-bit read path yields exactly
+             0x11112222 (a wrong a(1)=1 halfword gives 0x11111111 -> CPU1 FAIL). */
+          unsigned int expected = 0x11112222u;
           if (*result == expected) {
             putstr("CPU1 OK: ");
             put_hex(*result);
